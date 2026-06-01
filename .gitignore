@@ -1,6 +1,8 @@
 # Ignore lo*cal app data
 cookies/*
 chrome_data/*
+utils/chrome_data/
+utils/cookies/
 config.json*
 config.json
 __pycache__/

@@ -1,6 +1,9 @@
 """Browser automation and cookie management"""
 import json
 import os
+import re
+import shutil
+import subprocess
 import undetected_chromedriver as uc
 from utils.helpers import cookie_file_for_domain, CHROME_DATA_DIR
 
@@ -87,6 +90,100 @@ class CookieManager:
             return False
 
 
+def _chrome_executable_candidates():
+    """Yield likely Chrome executables in preference order."""
+    seen = set()
+    candidates = []
+
+    if os.name == "nt":
+        for env_name in ("LOCALAPPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)"):
+            base = os.environ.get(env_name)
+            if base:
+                candidates.append(os.path.join(base, "Google", "Chrome", "Application", "chrome.exe"))
+
+    for command in ("chrome", "google-chrome", "chromium", "chromium-browser"):
+        path = shutil.which(command)
+        if path:
+            candidates.append(path)
+
+    for path in candidates:
+        normalized = os.path.normcase(os.path.abspath(path))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if os.path.exists(path):
+            yield path
+
+
+def _parse_major_version(version_text):
+    match = re.search(r"(\d+)\.", version_text or "")
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _chrome_version_from_registry():
+    if os.name != "nt":
+        return None
+
+    try:
+        import winreg
+    except Exception:
+        return None
+
+    keys = (
+        (winreg.HKEY_CURRENT_USER, r"Software\Google\Chrome\BLBeacon"),
+        (winreg.HKEY_LOCAL_MACHINE, r"Software\Google\Chrome\BLBeacon"),
+        (winreg.HKEY_LOCAL_MACHINE, r"Software\WOW6432Node\Google\Chrome\BLBeacon"),
+    )
+    for root, key_name in keys:
+        try:
+            with winreg.OpenKey(root, key_name) as key:
+                version, _ = winreg.QueryValueEx(key, "version")
+                major = _parse_major_version(str(version))
+                if major:
+                    return major
+        except Exception:
+            continue
+    return None
+
+
+def _chrome_version_from_executable(path):
+    try:
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        proc = subprocess.run(
+            [path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=flags,
+        )
+    except Exception:
+        return None
+
+    return _parse_major_version((proc.stdout or "") + " " + (proc.stderr or ""))
+
+
+def _detect_chrome():
+    """Return (major_version, executable_path) for installed Chrome when possible."""
+    executable = next(_chrome_executable_candidates(), None)
+
+    if os.name == "nt":
+        major = _chrome_version_from_registry()
+        if major:
+            return major, executable
+
+    for path in ([executable] if executable else []):
+        major = _chrome_version_from_executable(path)
+        if major:
+            return major, path
+
+    return None, executable
+
+
 def make_chrome_driver(
     headless=True,
     visible_width=1280,
@@ -129,11 +226,17 @@ def make_chrome_driver(
         except Exception:
             pass
 
-    # Create driver with undetected-chromedriver
-    # (driver_path no longer needed, uc handles automatic download)
-    driver = uc.Chrome(
-        options=opts, version_main=None
-    )  # version_main=None for latest version
+    chrome_major, chrome_executable = _detect_chrome()
+    driver_kwargs = {
+        "options": opts,
+        "version_main": chrome_major,
+    }
+    if chrome_executable:
+        driver_kwargs["browser_executable_path"] = chrome_executable
+    if driver_path and os.path.isfile(driver_path):
+        driver_kwargs["driver_executable_path"] = driver_path
+
+    driver = uc.Chrome(**driver_kwargs)
 
     return driver
 
