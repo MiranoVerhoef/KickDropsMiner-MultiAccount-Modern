@@ -4,6 +4,8 @@ from .browser import CookieManager, make_chrome_driver
 from .api import (
     kick_is_live_by_api,
     fetch_drops_campaigns_and_progress,
+    fetch_drops_progress,
+    claim_available_drops,
     fetch_live_streamers_by_category,
     is_campaign_expired
 )
@@ -15,6 +17,8 @@ __all__ = [
     'make_chrome_driver',
     'kick_is_live_by_api',
     'fetch_drops_campaigns_and_progress',
+    'fetch_drops_progress',
+    'claim_available_drops',
     'fetch_live_streamers_by_category',
     'is_campaign_expired',
     'StreamWorker'

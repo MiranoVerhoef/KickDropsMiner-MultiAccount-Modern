@@ -5,6 +5,7 @@ import time
 from urllib.parse import urlparse
 import urllib.request
 from datetime import datetime
+from selenium.webdriver.common.by import By
 
 from utils.helpers import cookie_file_for_domain, debug_print, _kick_username_from_url
 from .browser import make_chrome_driver, CookieManager
@@ -456,6 +457,66 @@ def fetch_drops_progress(driver=None):
             except:
                 pass
         return {"progress": [], "driver": None}
+
+
+def claim_available_drops(driver=None):
+    """Click available claim buttons on the Kick drops inventory page."""
+    use_existing_driver = driver is not None
+    clicked = 0
+    if not use_existing_driver:
+        driver = None
+
+    try:
+        if not use_existing_driver:
+            driver = make_chrome_driver(headless=False, visible_width=500, visible_height=500)
+            try:
+                driver.set_window_position(-2000, -2000)
+            except Exception:
+                pass
+            driver.get("https://kick.com")
+            time.sleep(1)
+            _load_cookies_to_driver(driver)
+
+        driver.get("https://kick.com/drops/inventory")
+        time.sleep(4)
+
+        for _ in range(8):
+            buttons = driver.find_elements(
+                By.XPATH,
+                "//button[contains(translate(normalize-space(.), "
+                "'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'CLAIM')]",
+            )
+            clicked_this_round = False
+            for button in buttons:
+                try:
+                    text = (button.text or "").strip().upper()
+                    if not text or "CLAIMED" in text or "CLAIM" not in text:
+                        continue
+                    if not button.is_enabled():
+                        continue
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+                    time.sleep(0.4)
+                    button.click()
+                    clicked += 1
+                    clicked_this_round = True
+                    time.sleep(2)
+                    break
+                except Exception:
+                    continue
+            if not clicked_this_round:
+                break
+
+        return {"claimed": clicked, "driver": driver if not use_existing_driver else None}
+    except Exception as e:
+        print(f"Error claiming drops: {e}")
+        import traceback
+        traceback.print_exc()
+        if driver and not use_existing_driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+        return {"claimed": clicked, "driver": None}
 
 
 def fetch_drops_campaigns_and_progress():

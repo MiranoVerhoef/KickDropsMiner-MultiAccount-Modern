@@ -39,6 +39,16 @@ class Config:
                     item["is_global_drop"] = False
                 if "cumulative_time" not in item:
                     item["cumulative_time"] = 0
+                if "campaign_name" not in item:
+                    item["campaign_name"] = None
+                if "game" not in item:
+                    item["game"] = None
+                if "reward_names" not in item:
+                    item["reward_names"] = []
+                if "progress_units" not in item:
+                    item["progress_units"] = 0
+                if "claimed" not in item:
+                    item["claimed"] = False
                 # Add tried_channels tracking to prevent switching loops
                 if "tried_channels" not in item:
                     item["tried_channels"] = []
@@ -73,7 +83,20 @@ class Config:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
-    def add(self, url, minutes, campaign_id=None, campaign_channels=None, required_category_id=None, is_global_drop=False):
+    def add(
+        self,
+        url,
+        minutes,
+        campaign_id=None,
+        campaign_channels=None,
+        required_category_id=None,
+        is_global_drop=False,
+        campaign_name=None,
+        game=None,
+        reward_names=None,
+        progress_units=0,
+        claimed=False,
+    ):
         """Add item with optional campaign grouping"""
         item = {
             "url": url,
@@ -83,6 +106,12 @@ class Config:
             "required_category_id": required_category_id,
             "is_global_drop": is_global_drop,
             "cumulative_time": 0,  # Track cumulative time across all streamers in campaign
+            "campaign_name": campaign_name,
+            "game": game,
+            "reward_names": reward_names or [],
+            "progress_units": progress_units,
+            "claimed": claimed,
+            "tried_channels": [],
         }
         self.items.append(item)
         self.save()

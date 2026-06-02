@@ -18,6 +18,8 @@ from core import (
     make_chrome_driver,
     kick_is_live_by_api,
     fetch_drops_campaigns_and_progress,
+    fetch_drops_progress,
+    claim_available_drops,
     fetch_live_streamers_by_category,
     is_campaign_expired
 )
@@ -302,12 +304,12 @@ class App(ctk.CTk):
             show="headings",
             selectmode="browse",
         )
-        self.tree.heading("url", text="URL")
-        self.tree.heading("minutes", text=self.t("col_minutes"))
-        self.tree.heading("elapsed", text=self.t("col_elapsed"))
-        self.tree.column("url", width=600, anchor="w")
-        self.tree.column("minutes", width=130, anchor="center")
-        self.tree.column("elapsed", width=140, anchor="center")
+        self.tree.heading("url", text="Drop")
+        self.tree.heading("minutes", text="Current streamer")
+        self.tree.heading("elapsed", text="Progress")
+        self.tree.column("url", width=520, anchor="w")
+        self.tree.column("minutes", width=190, anchor="center")
+        self.tree.column("elapsed", width=170, anchor="center")
         self.tree.grid(row=0, column=0, sticky="nsew")
 
         yscroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
@@ -634,8 +636,8 @@ class App(ctk.CTk):
         if not row_id:
             return
         
-        # Check if clicked on minutes column (column #2)
-        if column == "#2":
+        # Check if clicked on progress column (column #3) to edit target minutes
+        if column == "#3":
             idx = int(row_id)
             if idx >= len(self.config_data.items):
                 return
@@ -663,19 +665,130 @@ class App(ctk.CTk):
                 self.refresh_list()
                 self.status_var.set(f"Updated target to {new_minutes} minutes")
     
+    def _streamer_name_from_url(self, url):
+        try:
+            parsed = urlparse(url)
+            return parsed.path.strip("/").split("/")[0] or url
+        except Exception:
+            return url
+
+    def _drop_title_for_item(self, item):
+        if item.get("campaign_name"):
+            parts = [item["campaign_name"]]
+            if item.get("game"):
+                parts.append(item["game"])
+            rewards = item.get("reward_names") or []
+            if rewards:
+                parts.append(", ".join(rewards[:3]))
+            return " | ".join(parts)
+        return item.get("url", "")
+
+    def _progress_text_for_item(self, idx, item):
+        if item.get("claimed"):
+            return "Claimed"
+        if item.get("finished"):
+            return self.t("tag_finished")
+
+        elapsed = self.workers[idx].elapsed_seconds if idx in self.workers else 0
+        base_seconds = item.get("cumulative_time", 0) if item.get("is_global_drop") else 0
+        total_seconds = base_seconds + elapsed
+        target_minutes = item.get("minutes", 0) or 0
+        current_minutes = total_seconds // 60
+
+        if target_minutes:
+            return f"{current_minutes}/{target_minutes}m"
+        return f"{total_seconds}s"
+
+    def _sync_claimed_drop_after_finish(self, campaign_id):
+        """Refresh Kick progress and remove a drop once Kick reports it claimed."""
+        if not campaign_id:
+            return
+
+        def sync():
+            driver = None
+            try:
+                claim_result = claim_available_drops()
+                claim_driver = claim_result.get("driver")
+                if claim_driver:
+                    try:
+                        claim_driver.quit()
+                    except Exception:
+                        pass
+                result = fetch_drops_progress()
+                progress_data = result.get("progress", [])
+                driver = result.get("driver")
+                match = None
+                for campaign in progress_data:
+                    if isinstance(campaign, dict) and campaign.get("id") == campaign_id:
+                        match = campaign
+                        break
+                if not match:
+                    return
+
+                rewards = match.get("rewards", [])
+                all_claimed = bool(rewards) and all(
+                    bool(reward.get("claimed")) for reward in rewards if isinstance(reward, dict)
+                )
+                claimed = match.get("status") == "claimed" or all_claimed
+                progress_units = match.get("progress_units", 0)
+
+                def apply_progress():
+                    idx = self._find_campaign_index(campaign_id)
+                    if idx is None:
+                        return
+                    if claimed:
+                        self.config_data.items[idx]["claimed"] = True
+                        self.config_data.items[idx]["finished"] = True
+                        self.config_data.save()
+                        if not self.queue_running and not self.workers:
+                            self.config_data.remove(idx)
+                        self.refresh_list()
+                        self.status_var.set("Claimed drop removed from active list" if not self.queue_running else "Claimed drop will be removed when queue stops")
+                        return
+                    self.config_data.items[idx]["progress_units"] = progress_units
+                    self.config_data.save()
+                    self.refresh_list()
+
+                self.after(0, apply_progress)
+            except Exception as e:
+                debug_print(f"DEBUG: Could not sync claimed drop state: {e}")
+            finally:
+                if driver:
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+
+        threading.Thread(target=sync, daemon=True).start()
+
+    def _prune_claimed_items(self):
+        if self.workers:
+            return
+        before = len(self.config_data.items)
+        self.config_data.items = [
+            item for item in self.config_data.items if not item.get("claimed")
+        ]
+        if len(self.config_data.items) != before:
+            self.config_data.save()
+            self.refresh_list()
+
     def refresh_list(self):
         for r in self.tree.get_children():
             self.tree.delete(r)
         for i, item in enumerate(self.config_data.items):
-            elapsed = self.workers[i].elapsed_seconds if i in self.workers else 0
             tags = ["odd" if i % 2 else "even"]
             if item.get("finished"):
                 tags.append("finished")
+            if item.get("claimed"):
+                tags.append("finished")
+            drop_title = self._drop_title_for_item(item)
+            current_streamer = self._streamer_name_from_url(item.get("url", ""))
+            progress = self._progress_text_for_item(i, item)
             self.tree.insert(
                 "",
                 "end",
                 iid=str(i),
-                values=(item["url"], item["minutes"], f"{elapsed}s"),
+                values=(drop_title, current_streamer, progress),
                 tags=tuple(tags),
             )
 
@@ -1006,7 +1119,7 @@ class App(ctk.CTk):
         
         for i in range(start_idx, len(self.config_data.items)):
             item = self.config_data.items[i]
-            if item.get("finished"):
+            if item.get("finished") or item.get("claimed"):
                 continue
             self.tree.selection_set(str(i))
             before = set(self.workers.keys())
@@ -1018,6 +1131,7 @@ class App(ctk.CTk):
                 return  # Only one stream at a time
         self.queue_running = False
         self.queue_current_idx = None
+        self._prune_claimed_items()
         self.status_var.set(self.t("queue_finished_status"))
 
     def stop_selected(self):
@@ -1660,60 +1774,26 @@ class App(ctk.CTk):
                         pass
                 return
             
-            debug_print(f"DEBUG: Processing {len(streamers)} streamers to add to queue")
-            status_label.configure(text=f"📝 Adding {len(streamers)} streamer(s) to queue...")
-            
-            # Calculate maximum required time from rewards (cumulative drops)
-            rewards = campaign.get("rewards", [])
-            max_required_minutes = 0
-            for reward in rewards:
-                required_units = reward.get("required_units", 0)
-                if required_units > max_required_minutes:
-                    max_required_minutes = required_units
-            
-            # If no rewards found, default to 120
-            if max_required_minutes == 0:
-                max_required_minutes = 120
-            
-            debug_print(f"DEBUG: Campaign has {len(rewards)} rewards, max required: {max_required_minutes} minutes")
-            
-            # Add all found streamers to queue
-            count = 0
-            skipped = 0
-            campaign_id = campaign.get("id")
-            all_streamers = [{"url": s["url"], "username": s["username"]} for s in streamers]
-            
-            for streamer in streamers:
-                try:
-                    url = streamer["url"]
-                    username = streamer.get("username", "unknown")
-                    debug_print(f"DEBUG: Processing streamer: {username} ({url})")
-                    
-                    if self._is_channel_in_list(url):
-                        debug_print(f"DEBUG: Streamer {username} already in list, skipping")
-                        skipped += 1
-                        continue
-                    
-                    # Store all streamers as alternatives for each other
-                    # Use max_required_minutes for cumulative drops
-                    debug_print(f"DEBUG: Adding {username} to queue with target: {max_required_minutes} minutes")
-                    self.config_data.add(
-                        url, 
-                        max_required_minutes, 
-                        campaign_id, 
-                        all_streamers,
-                        required_category_id=category_id,
-                        is_global_drop=True
-                    )
-                    count += 1
-                except Exception as e:
-                    debug_print(f"DEBUG: Error adding streamer {streamer.get('username', 'unknown')}: {e}")
-                    import traceback
-                    traceback.print_exc()
-            
-            debug_print(f"DEBUG: Added {count} streamers, skipped {skipped} (already in list)")
+            debug_print(f"DEBUG: Processing {len(streamers)} streamers as alternatives")
+            status_label.configure(text=f"📝 Adding drop with {len(streamers)} live streamer option(s)...")
+
+            campaign = dict(campaign)
+            campaign["channels"] = [
+                {"url": s["url"], "username": s.get("username", "")}
+                for s in streamers
+            ]
+            added = self._add_or_update_drop_task(
+                campaign,
+                preferred_url=streamers[0]["url"],
+                is_global_drop=True,
+            )
+
+            debug_print(f"DEBUG: Added global drop task: {added}")
             self.refresh_list()
-            status_label.configure(text=f"✅ Added {count} live streamer(s) for {game_name}" + (f" ({skipped} already in list)" if skipped > 0 else ""))
+            if added:
+                status_label.configure(text=f"✅ Added drop for {game_name} with {len(streamers)} streamer option(s)")
+            else:
+                status_label.configure(text=f"❌ Could not add drop for {game_name}")
             
             # Auto-start if enabled
             if self.config_data.auto_start and not self.queue_running:
@@ -2398,60 +2478,129 @@ class App(ctk.CTk):
 
     def _is_channel_in_list(self, url):
         """Check if a URL is already in the list"""
-        return any(item["url"] == url for item in self.config_data.items)
+        return self._find_channel_index(url) is not None
     
     def _find_channel_index(self, url):
         """Find the index of a URL in the list"""
         for idx, item in enumerate(self.config_data.items):
-            if item["url"] == url:
+            if item.get("url") == url:
+                return idx
+            for channel in item.get("campaign_channels", []):
+                channel_url = channel.get("url") if isinstance(channel, dict) else channel
+                if channel_url == url:
+                    return idx
+        return None
+
+    def _find_campaign_index(self, campaign_id):
+        """Find an existing queued drop by campaign ID."""
+        if not campaign_id:
+            return None
+        for idx, item in enumerate(self.config_data.items):
+            if item.get("campaign_id") == campaign_id:
                 return idx
         return None
+
+    def _campaign_channel_payload(self, campaign):
+        return [
+            {
+                "url": ch.get("url") if isinstance(ch, dict) else ch,
+                "username": ch.get("username", "") if isinstance(ch, dict) else "",
+            }
+            for ch in campaign.get("channels", [])
+            if (ch.get("url") if isinstance(ch, dict) else ch)
+        ]
+
+    def _campaign_minutes(self, campaign, default=120):
+        minutes = default
+        for reward in campaign.get("rewards", []):
+            required_units = reward.get("required_units", 0)
+            if required_units > minutes:
+                minutes = required_units
+        return minutes
+
+    def _campaign_category_id(self, campaign):
+        category = campaign.get("category", {})
+        if isinstance(category, dict) and category.get("id"):
+            return category.get("id")
+        progress_data = campaign.get("progress_data", {})
+        if isinstance(progress_data, dict):
+            progress_category = progress_data.get("category", {})
+            if isinstance(progress_category, dict):
+                return progress_category.get("id")
+        return campaign.get("category_id")
+
+    def _campaign_reward_names(self, campaign):
+        names = []
+        for reward in campaign.get("rewards", []):
+            name = reward.get("name")
+            if name:
+                names.append(name)
+        return names
+
+    def _add_or_update_drop_task(self, campaign, preferred_url=None, is_global_drop=False):
+        """Queue one drop task with all eligible channels as alternatives."""
+        campaign_id = campaign.get("id") if campaign else None
+        existing_idx = self._find_campaign_index(campaign_id)
+        campaign_channels = self._campaign_channel_payload(campaign) if campaign else []
+        if preferred_url:
+            selected_url = preferred_url
+        elif campaign_channels:
+            selected_url = campaign_channels[0]["url"]
+        else:
+            selected_url = None
+        if not selected_url:
+            return False
+
+        minutes = self._campaign_minutes(campaign)
+        required_category_id = self._campaign_category_id(campaign)
+        progress_units = campaign.get("progress_units", 0) if campaign else 0
+        claimed = campaign.get("progress_status") == "claimed" if campaign else False
+
+        if existing_idx is not None:
+            item = self.config_data.items[existing_idx]
+            item.update({
+                "url": selected_url,
+                "minutes": minutes,
+                "campaign_channels": campaign_channels,
+                "required_category_id": required_category_id,
+                "is_global_drop": is_global_drop,
+                "campaign_name": campaign.get("name"),
+                "game": campaign.get("game"),
+                "reward_names": self._campaign_reward_names(campaign),
+                "progress_units": progress_units,
+                "claimed": claimed,
+            })
+            self.config_data.save()
+            return True
+
+        self.config_data.add(
+            selected_url,
+            minutes,
+            campaign_id,
+            campaign_channels,
+            required_category_id=required_category_id,
+            is_global_drop=is_global_drop,
+            campaign_name=campaign.get("name"),
+            game=campaign.get("game"),
+            reward_names=self._campaign_reward_names(campaign),
+            progress_units=progress_units,
+            claimed=claimed,
+        )
+        return True
 
     def _add_drop_channel(self, url, minutes=120, campaign=None):
         """Add a drop channel to the queue with campaign info"""
         try:
-            campaign_id = campaign.get("id") if campaign else None
-            campaign_channels = [
-                {"url": ch["url"], "username": ch.get("username", "")} 
-                for ch in campaign.get("channels", [])
-            ] if campaign else []
-            
-            # Calculate max required time from rewards if campaign has rewards
             if campaign:
-                rewards = campaign.get("rewards", [])
-                if rewards:
-                    max_required = 0
-                    for reward in rewards:
-                        required_units = reward.get("required_units", 0)
-                        if required_units > max_required:
-                            max_required = required_units
-                    if max_required > 0:
-                        minutes = max_required
-            
-            # Get category_id from campaign
-            required_category_id = None
-            if campaign:
-                category = campaign.get("category", {})
-                if isinstance(category, dict):
-                    required_category_id = category.get("id")
-                else:
-                    # Try from progress_data
-                    progress_data = campaign.get("progress_data", {})
-                    if isinstance(progress_data, dict):
-                        progress_category = progress_data.get("category", {})
-                        if isinstance(progress_category, dict):
-                            required_category_id = progress_category.get("id")
-            
-            self.config_data.add(
-                url, 
-                minutes, 
-                campaign_id, 
-                campaign_channels,
-                required_category_id=required_category_id,
-                is_global_drop=False  # Regular drop, not global
-            )
+                if not self._add_or_update_drop_task(campaign, preferred_url=url):
+                    return
+            else:
+                self.config_data.add(url, minutes or 0)
             self.refresh_list()
-            self.status_var.set(self.t("drops_added", channel=url.split("/")[-1]))
+            if campaign:
+                self.status_var.set(f"Added drop: {campaign.get('name', url)}")
+            else:
+                self.status_var.set(self.t("drops_added", channel=url.split("/")[-1]))
             # Auto-start if enabled and queue not running
             if self.config_data.auto_start and not self.queue_running:
                 self.after(500, self._auto_start_queue)
@@ -2479,59 +2628,13 @@ class App(ctk.CTk):
             print(f"Error removing channel: {e}")
 
     def _add_all_campaign_channels(self, campaign):
-        """Add all channels from a campaign with campaign grouping"""
-        count = 0
-        campaign_id = campaign.get("id")
-        all_channels = campaign.get("channels", [])
-        
-        # Calculate max required time from rewards if campaign has rewards
-        minutes = 120  # Default
-        rewards = campaign.get("rewards", [])
-        if rewards:
-            max_required = 0
-            for reward in rewards:
-                required_units = reward.get("required_units", 0)
-                if required_units > max_required:
-                    max_required = required_units
-            if max_required > 0:
-                minutes = max_required
-        
-        # Get category_id from campaign
-        required_category_id = None
-        category = campaign.get("category", {})
-        if isinstance(category, dict):
-            required_category_id = category.get("id")
-        else:
-            # Try from progress_data
-            progress_data = campaign.get("progress_data", {})
-            if isinstance(progress_data, dict):
-                progress_category = progress_data.get("category", {})
-                if isinstance(progress_category, dict):
-                    required_category_id = progress_category.get("id")
-        
-        for channel in all_channels:
-            try:
-                url = channel.get("url") if isinstance(channel, dict) else channel
-                # Store all channels as alternatives for each other
-                campaign_channels = [
-                    {"url": ch.get("url") if isinstance(ch, dict) else ch, 
-                     "username": ch.get("username", "") if isinstance(ch, dict) else ""}
-                    for ch in all_channels
-                ]
-                self.config_data.add(
-                    url, 
-                    minutes, 
-                    campaign_id, 
-                    campaign_channels,
-                    required_category_id=required_category_id,
-                    is_global_drop=False  # Regular drop, not global
-                )
-                count += 1
-            except Exception as e:
-                print(f"Error adding channel {channel.get('username', 'unknown')}: {e}")
+        """Add one drop task with every campaign channel as an alternative."""
+        if not self._add_or_update_drop_task(campaign):
+            self.status_var.set(f"Could not add drop: {campaign.get('name', 'unknown')}")
+            return
 
         self.refresh_list()
-        self.status_var.set(f"Added {count} channel(s) from {campaign['name']}")
+        self.status_var.set(f"Added drop: {campaign['name']}")
         # Auto-start if enabled and queue not running
         if self.config_data.auto_start and not self.queue_running:
             self.after(500, self._auto_start_queue)
@@ -2735,6 +2838,8 @@ class App(ctk.CTk):
             worker = self.workers.get(idx)
             ended_offline = bool(worker and getattr(worker, "ended_because_offline", False))
             ended_wrong_category = bool(worker and getattr(worker, "ended_because_wrong_category", False))
+            if idx in self.workers:
+                del self.workers[idx]
             
             item = self.config_data.items[idx]
             is_global_drop = item.get("is_global_drop", False)
@@ -2797,6 +2902,8 @@ class App(ctk.CTk):
                     current_tags.discard("paused")
                     current_tags.discard("redo")
                     self.tree.item(str(idx), values=values, tags=tuple(current_tags))
+                if campaign_id:
+                    self._sync_claimed_drop_after_finish(campaign_id)
             elif ended_offline or ended_wrong_category:
                 # Try alternative channel from same campaign
                 campaign_channels = item.get("campaign_channels", [])

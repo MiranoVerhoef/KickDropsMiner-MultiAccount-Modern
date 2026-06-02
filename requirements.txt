@@ -1,0 +1,7 @@
+customtkinter
+pillow
+selenium
+undetected-chromedriver
+webdriver-manager
+browser_cookie3
+setuptools
