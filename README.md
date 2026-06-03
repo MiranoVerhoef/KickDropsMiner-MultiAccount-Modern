@@ -4,6 +4,17 @@
 
 # Kick Drop Miner
 
+## What's changed in this fork
+
+This fork modernizes Kick Drop Miner around drop-based automation instead of manually managing a flat stream URL list.
+
+- **Modern main UI** - refreshed sidebar navigation, cached views for fast switching, cleaner active drop table, dynamic column sizing, and a dedicated logging screen.
+- **Drop-first queue flow** - add drops or manual links, let the app pick live creators, skip creators manually, stop the queue cleanly, and continue with the next available streamer.
+- **Progress persistence** - watched time is saved when stopping, skipping, or closing workers, then resumed later so drops do not restart from zero.
+- **Multi-account support** - add/remove Kick accounts, save cookies per account, detect account names from Kick sessions, and choose the account when adding drops or links.
+- **Better logging** - runtime history records queue starts/stops, creator switches, saved progress, resumed progress, and drop completion, with filters for drop and creator.
+- **Browser cleanup and Kick handling** - stopping the queue force-closes Chrome sessions, and Kick cookie prompts are accepted automatically when possible.
+
 Kick Drop Miner automates watching Kick.com streams so you can keep drop timers moving without babysitting the site. The desktop app ships with a CustomTkinter UI, Selenium + undetected-chromedriver under the hood, persistent local storage, and smart handling for live/offline transitions.
 
 ## Highlights
