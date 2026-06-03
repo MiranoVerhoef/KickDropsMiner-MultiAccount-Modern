@@ -5,25 +5,29 @@ import re
 import shutil
 import subprocess
 import undetected_chromedriver as uc
-from utils.helpers import cookie_file_for_domain, CHROME_DATA_DIR
+from selenium.webdriver.common.by import By
+from utils.helpers import cookie_file_for_account, cookie_file_for_domain, CHROME_DATA_DIR
 
 
 class CookieManager:
     """Manages browser cookies for authentication"""
     
     @staticmethod
-    def save_cookies(driver, domain):
+    def save_cookies(driver, domain, account_id=None):
         """Save cookies from driver to file"""
-        path = cookie_file_for_domain(domain)
+        path = cookie_file_for_account(domain, account_id)
         cookies = driver.get_cookies()
         with open(path, "w", encoding="utf-8") as f:
             json.dump(cookies, f, indent=2)
         return path
 
     @staticmethod
-    def load_cookies(driver, domain):
+    def load_cookies(driver, domain, account_id=None):
         """Load cookies from file into driver"""
-        path = cookie_file_for_domain(domain)
+        path = cookie_file_for_account(domain, account_id)
+        if not os.path.exists(path):
+            # Fallback to the legacy single-account cookie file.
+            path = cookie_file_for_domain(domain)
         if not os.path.exists(path):
             return False
         with open(path, "r", encoding="utf-8") as f:
@@ -39,7 +43,7 @@ class CookieManager:
         return True
 
     @staticmethod
-    def import_from_browser(domain: str) -> bool:
+    def import_from_browser(domain: str, account_id=None) -> bool:
         """Attempts to import existing cookies from browsers (Chrome/Edge/Firefox)
         using browser_cookie3. Returns True if a file was written.
         """
@@ -81,7 +85,7 @@ class CookieManager:
         if not cookies:
             return False
 
-        path = cookie_file_for_domain(domain)
+        path = cookie_file_for_account(domain, account_id)
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(cookies, f, indent=2)
@@ -89,6 +93,40 @@ class CookieManager:
         except Exception:
             return False
 
+
+def accept_kick_cookies(driver):
+    """Click Kick's cookie consent button when it appears."""
+    selectors = (
+        "button[data-testid='accept-cookies']",
+        "button#onetrust-accept-btn-handler",
+        "button[aria-label*='Accept']",
+        "button[aria-label*='accept']",
+    )
+    for selector in selectors:
+        try:
+            buttons = driver.find_elements(By.CSS_SELECTOR, selector)
+            for button in buttons:
+                if button.is_displayed() and button.is_enabled():
+                    button.click()
+                    return True
+        except Exception:
+            pass
+
+    xpaths = (
+        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'accept')]",
+        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'agree')]",
+        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'allow')]",
+    )
+    for xpath in xpaths:
+        try:
+            buttons = driver.find_elements(By.XPATH, xpath)
+            for button in buttons:
+                if button.is_displayed() and button.is_enabled():
+                    button.click()
+                    return True
+        except Exception:
+            pass
+    return False
 
 def _chrome_executable_candidates():
     """Yield likely Chrome executables in preference order."""

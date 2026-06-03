@@ -98,6 +98,17 @@ def cookie_file_for_domain(domain):
     return os.path.join(COOKIES_DIR, f"{safe}.json")
 
 
+def cookie_file_for_account(domain, account_id=None):
+    """Get cookie file path for a domain and optional account."""
+    if not account_id:
+        return cookie_file_for_domain(domain)
+    safe_domain = domain.replace(":", "_")
+    safe_account = str(account_id).replace(":", "_").replace("/", "_").replace("\\", "_")
+    account_dir = os.path.join(COOKIES_DIR, "accounts", safe_account)
+    os.makedirs(account_dir, exist_ok=True)
+    return os.path.join(account_dir, f"{safe_domain}.json")
+
+
 def _kick_username_from_url(url: str):
     """Extract Kick username from URL"""
     try:

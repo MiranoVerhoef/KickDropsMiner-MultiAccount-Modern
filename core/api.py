@@ -7,7 +7,7 @@ import urllib.request
 from datetime import datetime
 from selenium.webdriver.common.by import By
 
-from utils.helpers import cookie_file_for_domain, debug_print, _kick_username_from_url
+from utils.helpers import cookie_file_for_account, cookie_file_for_domain, debug_print, _kick_username_from_url
 from .browser import make_chrome_driver, CookieManager
 
 
@@ -220,9 +220,11 @@ def fetch_live_streamers_by_category(category_id, limit=24, driver=None):
                 pass
 
 
-def _load_cookies_to_driver(driver):
+def _load_cookies_to_driver(driver, account_id=None):
     """Helper to load cookies into driver"""
-    cookie_path = cookie_file_for_domain("kick.com")
+    cookie_path = cookie_file_for_account("kick.com", account_id)
+    if not os.path.exists(cookie_path):
+        cookie_path = cookie_file_for_domain("kick.com")
     if os.path.exists(cookie_path):
         with open(cookie_path, "r", encoding="utf-8") as f:
             cookies = json.load(f)
@@ -355,7 +357,7 @@ def fetch_drop_campaigns():
         return {"campaigns": [], "driver": None}
 
 
-def fetch_drops_progress(driver=None):
+def fetch_drops_progress(driver=None, account_id=None):
     """Fetches current drop progress from the Kick API.
     Uses undetected_chromedriver and requires authentication via session_token cookie.
     If driver is provided, reuses it instead of creating a new one.
@@ -459,7 +461,7 @@ def fetch_drops_progress(driver=None):
         return {"progress": [], "driver": None}
 
 
-def claim_available_drops(driver=None):
+def claim_available_drops(driver=None, account_id=None):
     """Click available claim buttons on the Kick drops inventory page."""
     use_existing_driver = driver is not None
     clicked = 0
@@ -475,7 +477,7 @@ def claim_available_drops(driver=None):
                 pass
             driver.get("https://kick.com")
             time.sleep(1)
-            _load_cookies_to_driver(driver)
+            _load_cookies_to_driver(driver, account_id)
 
         driver.get("https://kick.com/drops/inventory")
         time.sleep(4)

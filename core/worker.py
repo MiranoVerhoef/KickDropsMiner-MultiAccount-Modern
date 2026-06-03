@@ -7,7 +7,7 @@ import re
 from selenium.webdriver.common.by import By
 
 from utils.helpers import domain_from_url, debug_print, _kick_username_from_url
-from .browser import make_chrome_driver, CookieManager
+from .browser import make_chrome_driver, CookieManager, accept_kick_cookies
 
 
 class StreamWorker(threading.Thread):
@@ -29,6 +29,7 @@ class StreamWorker(threading.Thread):
         offline_fresh_checks_to_switch=2,
         required_category_id=None,
         cumulative_time_callback=None,
+        account_id=None,
     ):
         super().__init__(daemon=True)
         self.url = url
@@ -49,6 +50,7 @@ class StreamWorker(threading.Thread):
         self.ended_because_wrong_category = False
         self.required_category_id = required_category_id
         self.cumulative_time_callback = cumulative_time_callback
+        self.account_id = account_id
         self._offline_fresh_checks = 0
         self.offline_fresh_checks_to_switch = max(0, int(offline_fresh_checks_to_switch or 0))
         # Anti rate-limit: cache "is live" checks
@@ -93,7 +95,7 @@ class StreamWorker(threading.Thread):
             base = f"https://{domain}" if domain else "about:blank"
             if domain:
                 self.driver.get(base)
-                CookieManager.load_cookies(self.driver, domain)
+                CookieManager.load_cookies(self.driver, domain, self.account_id)
                 
                 # Set stream quality in session storage BEFORE navigating to stream URL
                 if self.force_160p:
@@ -106,6 +108,10 @@ class StreamWorker(threading.Thread):
             
             # Wait for page to load (give it time for stream to initialize)
             time.sleep(5)
+            try:
+                accept_kick_cookies(self.driver)
+            except Exception:
+                pass
 
             try:
                 self.ensure_player_state()
@@ -185,6 +191,12 @@ class StreamWorker(threading.Thread):
     def stop(self):
         """Stop the worker"""
         self.stop_event.set()
+        try:
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
+        except Exception:
+            pass
     
     def get_streamer_category_id(self):
         """Get the current category ID of the streamer's livestream"""
