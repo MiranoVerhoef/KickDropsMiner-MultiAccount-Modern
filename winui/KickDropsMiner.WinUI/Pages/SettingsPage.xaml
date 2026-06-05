@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="KickDropsMiner_WinUI.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="28,24" RowSpacing="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock FontSize="30" FontWeight="SemiBold" Text="Settings" />
+            <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Player, queue, appearance, and browser options." />
+        </StackPanel>
+
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Padding="14" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6">
+                <StackPanel Spacing="8">
+                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="Player" />
+                    <ToggleSwitch x:Name="MuteSwitch" Header="Mute" Toggled="Setting_Toggled" />
+                    <ToggleSwitch x:Name="HidePlayerSwitch" Header="Hide player" Toggled="Setting_Toggled" />
+                    <ToggleSwitch x:Name="MiniPlayerSwitch" Header="Mini player" Toggled="Setting_Toggled" />
+                    <ToggleSwitch x:Name="Force160pSwitch" Header="Force 160p" Toggled="Setting_Toggled" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Padding="14" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6">
+                <StackPanel Spacing="8">
+                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="Queue" />
+                    <ToggleSwitch x:Name="AutoStartSwitch" Header="Auto-start queue" Toggled="Setting_Toggled" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Padding="14" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6">
+                <StackPanel Spacing="8">
+                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="Appearance" />
+                    <ComboBox x:Name="ThemeModeBox" Header="Theme" MinWidth="180" SelectionChanged="ThemeMode_SelectionChanged">
+                        <ComboBoxItem Content="Auto" Tag="auto" />
+                        <ComboBoxItem Content="Light" Tag="light" />
+                        <ComboBoxItem Content="Dark" Tag="dark" />
+                    </ComboBox>
+                    <ComboBox x:Name="LanguageBox" Header="Language" MinWidth="180" SelectionChanged="Language_SelectionChanged">
+                        <ComboBoxItem Content="English" Tag="en" />
+                        <ComboBoxItem Content="French" Tag="fr" />
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Padding="14" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock FontSize="18" FontWeight="SemiBold" Text="Browser" />
+                    <TextBlock x:Name="BrowserPathsText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="WrapWholeWords" />
+                </StackPanel>
+                <Button Grid.Column="1" Click="Chromedriver_Click" Content="Chromedriver..." />
+                <Button Grid.Column="2" Click="Extension_Click" Content="Chrome extension..." />
+            </Grid>
+        </Border>
+
+    </Grid>
+</Page>

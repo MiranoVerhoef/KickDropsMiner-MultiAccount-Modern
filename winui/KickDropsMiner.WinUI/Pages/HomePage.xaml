@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="KickDropsMiner_WinUI.Pages.HomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <DataTemplate x:Key="DropTemplate">
+            <Grid Padding="16,12" ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="1.2*" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="1.1*" />
+                    <ColumnDefinition Width="120" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding Drop}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding Url}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding Creator}" />
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{Binding Progress}" />
+                <TextBlock Grid.Column="3" VerticalAlignment="Center" Text="{Binding Account}" />
+                <Border
+                    Grid.Column="4"
+                    Padding="10,5"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                    CornerRadius="12">
+                    <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding Status}" />
+                </Border>
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid Padding="28,24" RowSpacing="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock FontSize="32" FontWeight="SemiBold" Text="Main Menu" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Drop queue, progress, and active creator control." />
+            </StackPanel>
+            <Button
+                Grid.Column="1"
+                MinWidth="120"
+                Click="AddLink_Click"
+                Content="Add link" />
+            <Button
+                Grid.Column="2"
+                MinWidth="120"
+                Click="Refresh_Click"
+                Content="Refresh" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button MinWidth="130" Click="StartQueue_Click" Content="Start queue" Style="{StaticResource AccentButtonStyle}" />
+            <Button Grid.Column="1" MinWidth="130" Click="StopQueue_Click" Content="Stop queue" />
+            <Button Grid.Column="2" MinWidth="130" Click="SkipCreator_Click" Content="Skip creator" />
+            <TextBlock
+                Grid.Column="3"
+                VerticalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{Binding StatusText, Mode=OneWay}" />
+            <Button Grid.Column="4" MinWidth="110" Click="Edit_Click" Content="Edit" />
+            <Button Grid.Column="5" MinWidth="110" Click="Remove_Click" Content="Remove" />
+        </Grid>
+
+        <Border
+            Grid.Row="2"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8">
+            <Grid RowSpacing="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="44" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Padding="16,0" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="1.2*" />
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="1.1*" />
+                        <ColumnDefinition Width="120" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Drop" />
+                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" Text="Current creator" />
+                    <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="Progress" />
+                    <TextBlock Grid.Column="3" VerticalAlignment="Center" FontWeight="SemiBold" Text="Account" />
+                    <TextBlock Grid.Column="4" VerticalAlignment="Center" FontWeight="SemiBold" Text="Status" />
+                </Grid>
+                <ListView
+                    x:Name="DropList"
+                    Grid.Row="1"
+                    ItemTemplate="{StaticResource DropTemplate}"
+                    ItemsSource="{x:Bind State.Drops, Mode=OneWay}"
+                    SelectionMode="Single" />
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

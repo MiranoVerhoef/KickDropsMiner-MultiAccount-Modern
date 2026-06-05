@@ -6,9 +6,12 @@ utils/cookies/
 config.json*
 config.json
 __pycache__/
+**/bin/
+**/obj/
 dist/
 build/
 *.spec
+utils/winui_drops_cache.json
 example_response.json
 /useful data
 progressapi_exampleresult.json

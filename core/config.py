@@ -16,6 +16,7 @@ class Config:
         self.mini_player = False
         self.force_160p = False
         self.dark_mode = True  # Dark by default
+        self.theme_mode = "dark"  # auto | light | dark
         self.language = "fr"  # default language code
         self.auto_start = False  # Auto-start queue on launch
         self.debug = False  # Debug messages disabled by default
@@ -70,6 +71,9 @@ class Config:
             self.mini_player = data.get("mini_player", False)
             self.force_160p = data.get("force_160p", False)
             self.dark_mode = data.get("dark_mode", True)
+            self.theme_mode = data.get("theme_mode") or ("dark" if self.dark_mode else "light")
+            if self.theme_mode not in {"auto", "light", "dark"}:
+                self.theme_mode = "dark" if self.dark_mode else "light"
             self.language = data.get("language", "fr")
             self.auto_start = data.get("auto_start", False)
             self.debug = data.get("debug", False)
@@ -110,6 +114,7 @@ class Config:
             "mini_player": self.mini_player,
             "force_160p": self.force_160p,
             "dark_mode": self.dark_mode,
+            "theme_mode": self.theme_mode,
             "language": self.language,
             "auto_start": self.auto_start,
             "debug": self.debug,

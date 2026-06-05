@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "KickDropsMiner.WinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "KickDropsMiner.WinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

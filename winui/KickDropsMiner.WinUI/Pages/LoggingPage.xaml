@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="KickDropsMiner_WinUI.Pages.LoggingPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <DataTemplate x:Key="LogTemplate">
+            <Grid Padding="14,10" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="180" />
+                    <ColumnDefinition Width="160" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding Drop}" />
+                <TextBlock Grid.Column="1" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding Creator}" />
+                <TextBlock Grid.Column="2" Text="{Binding Display}" />
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid Padding="28,24" RowSpacing="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock FontSize="32" FontWeight="SemiBold" Text="Logging" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Queue, creator switching, and progress history." />
+            </StackPanel>
+            <Button Grid.Column="1" MinWidth="100" Click="Clear_Click" Content="Clear" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260" />
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <ComboBox x:Name="DropFilter" Header="Drop" SelectionChanged="Filter_SelectionChanged" />
+            <ComboBox Grid.Column="1" x:Name="CreatorFilter" Header="Creator" SelectionChanged="Filter_SelectionChanged" />
+        </Grid>
+
+        <Border
+            Grid.Row="2"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8">
+            <ListView x:Name="LogList" ItemTemplate="{StaticResource LogTemplate}" />
+        </Border>
+    </Grid>
+</Page>
