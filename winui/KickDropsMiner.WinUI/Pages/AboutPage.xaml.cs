@@ -139,6 +139,11 @@ public sealed partial class AboutPage : Page
         }
     }
 
+    private void CampaignList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        AddSeriesButton.IsEnabled = CampaignList.SelectedItem is CampaignItem;
+    }
+
     private static CampaignItem ToCampaignItem(JsonElement campaign)
     {
         return new CampaignItem
@@ -149,7 +154,7 @@ public sealed partial class AboutPage : Page
             Creator = ReadString(campaign, "channels"),
             Drop = NormalizeDrop(ReadString(campaign, "rewards"), ReadString(campaign, "name")),
             Time = NormalizeTime(ReadString(campaign, "time"), ReadInt(campaign, "minutes")),
-            Status = ReadString(campaign, "status"),
+            Status = ReadBool(campaign, "has_started", true) ? ReadString(campaign, "status") : "upcoming",
             Rewards = ReadString(campaign, "rewards"),
             Channels = ReadString(campaign, "channels"),
             GameImage = ReadString(campaign, "game_image"),
@@ -195,8 +200,78 @@ public sealed partial class AboutPage : Page
 
         if (result.HasValue)
         {
+            if (result.Value.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
+            {
+                StatusText.Text = ReadString(result.Value, "error");
+                return;
+            }
+
             AppServices.State.ApplyBackendState(result.Value);
             StatusText.Text = $"Added {campaign.Name}.";
+        }
+    }
+
+    private async void AddSeries_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (CampaignList.SelectedItem is not CampaignItem selected)
+        {
+            StatusText.Text = "Select a drop first.";
+            return;
+        }
+
+        var account = AccountPicker.SelectedItem as AccountItem;
+        var series = _campaigns
+            .Where(c => string.Equals(c.Game, selected.Game, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (series.Length == 0)
+        {
+            StatusText.Text = "No drops found for this series.";
+            return;
+        }
+
+        var documents = new List<JsonDocument>();
+        try
+        {
+            var campaignPayload = new List<JsonElement>();
+            foreach (var campaign in series)
+            {
+                var document = JsonDocument.Parse(campaign.RawJson);
+                documents.Add(document);
+                campaignPayload.Add(document.RootElement.Clone());
+            }
+
+            var result = await AppServices.Bridge.SendCommandAsync("add_campaigns", new
+            {
+                campaigns = campaignPayload,
+                account_id = account?.Id
+            });
+
+            if (!result.HasValue)
+            {
+                StatusText.Text = "Could not add series.";
+                return;
+            }
+
+            if (result.Value.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
+            {
+                StatusText.Text = ReadString(result.Value, "error");
+                return;
+            }
+
+            AppServices.State.ApplyBackendState(result.Value);
+            var added = ReadInt(result.Value, "added");
+            var skipped = ReadInt(result.Value, "skipped");
+            StatusText.Text = skipped > 0
+                ? $"Added {added} drop(s) from {selected.Game}; skipped {skipped}."
+                : $"Added {added} drop(s) from {selected.Game}.";
+        }
+        finally
+        {
+            foreach (var document in documents)
+            {
+                document.Dispose();
+            }
         }
     }
 
@@ -210,5 +285,15 @@ public sealed partial class AboutPage : Page
     private static int ReadInt(JsonElement element, string property)
     {
         return element.TryGetProperty(property, out var value) && value.TryGetInt32(out var result) ? result : 0;
+    }
+
+    private static bool ReadBool(JsonElement element, string property, bool defaultValue)
+    {
+        if (!element.TryGetProperty(property, out var value))
+        {
+            return defaultValue;
+        }
+
+        return value.ValueKind == JsonValueKind.True;
     }
 }

@@ -7,6 +7,7 @@ import queue
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from core import (
@@ -61,6 +62,7 @@ class WinUIBackend:
             "edit_manual": self.edit_manual,
             "fetch_drops": self.fetch_drops,
             "add_campaign": self.add_campaign,
+            "add_campaigns": self.add_campaigns,
             "remove": self.remove,
             "start_queue": self.start_queue,
             "stop_queue": self.stop_queue,
@@ -244,6 +246,32 @@ class WinUIBackend:
                 return {"ok": False, "error": "Campaign has no stream channels"}
             self._log(f"Added drop: {campaign.get('name', 'Unknown campaign')}", campaign.get("name", ""), "")
             return {"ok": True, **self.state()}
+
+    def add_campaigns(self, payload):
+        campaigns = payload.get("campaigns")
+        account_id = payload.get("account_id")
+        if not isinstance(campaigns, list):
+            return {"ok": False, "error": "Missing campaigns"}
+        with self._lock:
+            if not account_id and self.config.accounts:
+                account_id = self.config.accounts[0].get("id")
+            if not account_id:
+                return {"ok": False, "error": "Add a Kick account before adding drops"}
+
+            added = 0
+            skipped = 0
+            for campaign in campaigns:
+                if not isinstance(campaign, dict):
+                    skipped += 1
+                    continue
+                if self._add_or_update_campaign(campaign, account_id):
+                    added += 1
+                else:
+                    skipped += 1
+
+            if added:
+                self._log(f"Added {added} drop(s) as a series", "Drops", "")
+            return {"ok": True, "added": added, "skipped": skipped, **self.state()}
 
     def remove(self, payload):
         idx = int(payload.get("index", -1))
@@ -474,9 +502,14 @@ class WinUIBackend:
             if self.workers:
                 return
             self.config.load()
+            waiting_for_start = False
             for idx in range(start_idx, len(self.config.items)):
                 item = self.config.items[idx]
                 if item.get("finished") or item.get("claimed"):
+                    continue
+                if not self._drop_has_started(item):
+                    waiting_for_start = True
+                    self._log_item(item, f"Drop has not started yet; starts {self._format_datetime(item.get('campaign_starts_at'))}")
                     continue
                 self.queue_current_idx = idx
                 self._status = f"Starting {self._streamer_name_from_url(item.get('url', ''))}"
@@ -487,7 +520,10 @@ class WinUIBackend:
             self.queue_current_idx = None
             self._status = "Ready"
             self._prune_claimed_items()
-            self._log("Queue finished", "Queue", "")
+            if waiting_for_start:
+                self._log("No started drops available; queued drops were left in place", "Queue", "")
+            else:
+                self._log("Queue finished", "Queue", "")
             self._emit_state()
 
     def _start_index(self, idx):
@@ -497,6 +533,15 @@ class WinUIBackend:
             if self.workers:
                 return
             item = self.config.items[idx]
+
+        if not self._drop_has_started(item):
+            self._log_item(item, f"Drop has not started yet; starts {self._format_datetime(item.get('campaign_starts_at'))}")
+            with self._lock:
+                self.queue_current_idx = None
+                self._status = "Waiting for drop start"
+                self._emit_state()
+                self._actions.put(("run_from", idx + 1))
+            return
 
         if not kick_is_live_by_api(item["url"]):
             self._log_item(item, f"{self._streamer_name_from_url(item['url'])} is offline")
@@ -908,6 +953,9 @@ class WinUIBackend:
             "game_image": campaign.get("game_image", ""),
             "reward_image": reward_image,
             "status": campaign.get("progress_status", campaign.get("status", "unknown")),
+            "starts_at": self._campaign_start_value(campaign) or "",
+            "ends_at": self._campaign_end_value(campaign) or "",
+            "has_started": self._campaign_has_started(campaign),
             "rewards": ", ".join(rewards[:4]),
             "channels": ", ".join(
                 (channel.get("username") or self._streamer_name_from_url(channel.get("url", "")))
@@ -952,6 +1000,8 @@ class WinUIBackend:
             "campaign_id": campaign_id,
             "campaign_channels": channels,
             "required_category_id": self._campaign_category_id(campaign),
+            "campaign_starts_at": self._campaign_start_value(campaign),
+            "campaign_ends_at": self._campaign_end_value(campaign),
             "is_global_drop": True,
             "campaign_name": campaign.get("name"),
             "game": campaign.get("game"),
@@ -1005,6 +1055,44 @@ class WinUIBackend:
             if reward.get("name")
         ]
 
+    def _campaign_start_value(self, campaign):
+        return campaign.get("starts_at") or campaign.get("start_at") or campaign.get("started_at")
+
+    def _campaign_end_value(self, campaign):
+        return campaign.get("ends_at") or campaign.get("end_at") or campaign.get("ended_at")
+
+    def _campaign_has_started(self, campaign):
+        start_value = self._campaign_start_value(campaign)
+        start_dt = self._parse_datetime(start_value)
+        return start_dt is None or start_dt <= datetime.now(timezone.utc)
+
+    def _drop_has_started(self, item):
+        if item.get("is_manual_link"):
+            return True
+        start_dt = self._parse_datetime(item.get("campaign_starts_at"))
+        return start_dt is None or start_dt <= datetime.now(timezone.utc)
+
+    def _parse_datetime(self, value):
+        if value in (None, ""):
+            return None
+        try:
+            if isinstance(value, (int, float)):
+                timestamp = float(value)
+                if timestamp > 10_000_000_000:
+                    timestamp /= 1000
+                return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            text = str(value).strip()
+            if not text:
+                return None
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            parsed = datetime.fromisoformat(text)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except Exception:
+            return None
+
     def _progress_text_for_seconds(self, item, elapsed_seconds):
         base = item.get("cumulative_time", 0) if item.get("is_global_drop") else item.get("watched_seconds", 0)
         total = int(base or 0) + int(elapsed_seconds or 0)
@@ -1019,6 +1107,12 @@ class WinUIBackend:
         seconds = max(0, int(seconds or 0))
         minutes, secs = divmod(seconds, 60)
         return f"{minutes}m {secs}s" if minutes else f"{secs}s"
+
+    def _format_datetime(self, value):
+        parsed = self._parse_datetime(value)
+        if parsed is None:
+            return "later"
+        return parsed.astimezone().strftime("%Y-%m-%d %H:%M")
 
     def _drop_title_for_item(self, item):
         if item.get("campaign_name"):

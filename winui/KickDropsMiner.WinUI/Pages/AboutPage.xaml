@@ -47,13 +47,15 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock FontSize="32" FontWeight="SemiBold" Text="Browse Drops" />
                 <TextBlock x:Name="StatusText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Refresh to load active Kick drops." />
             </StackPanel>
             <ProgressRing x:Name="LoadProgress" Grid.Column="1" Width="28" Height="28" IsActive="False" Visibility="Collapsed" />
-            <Button Grid.Column="2" MinWidth="120" Click="Refresh_Click" Content="Load Drops" Style="{StaticResource AccentButtonStyle}" />
+            <Button x:Name="AddSeriesButton" Grid.Column="2" MinWidth="120" Click="AddSeries_Click" Content="Add Series" IsEnabled="False" />
+            <Button Grid.Column="3" MinWidth="120" Click="Refresh_Click" Content="Load Drops" Style="{StaticResource AccentButtonStyle}" />
         </Grid>
 
         <ComboBox
@@ -95,7 +97,8 @@
                 x:Name="CampaignList"
                 Grid.Row="1"
                 ItemTemplate="{StaticResource CampaignTemplate}"
-                SelectionMode="None" />
+                SelectionChanged="CampaignList_SelectionChanged"
+                SelectionMode="Single" />
         </Grid>
     </Grid>
 </Page>
