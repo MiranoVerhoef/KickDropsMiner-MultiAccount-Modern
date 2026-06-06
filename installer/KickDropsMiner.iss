@@ -1,8 +1,8 @@
 #define MyAppName "Kick Drop Miner"
-#define MyAppVersion "1.4"
+#define MyAppVersion "1.5"
 #define MyAppPublisher "MiranoVerhoef"
 #define MyAppExeName "KickDropsMiner.WinUI.exe"
-#define SourceDir "..\build\release\KickDropsMiner_v1.4"
+#define SourceDir "..\build\release\KickDropsMiner_v1.5"
 
 [Setup]
 AppId={{7D3A4BB1-DAB1-4E3E-BF78-70D87DBF2F5D}

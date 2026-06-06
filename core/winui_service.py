@@ -46,6 +46,7 @@ class WinUIBackend:
         self._ignored_finishes = set()
         self._last_progress_log = {}
         self._login_drivers = {}
+        self._start_wait_timer = None
         self._status = "Ready"
         self._lock = threading.RLock()
         self._actions = queue.Queue()
@@ -305,6 +306,7 @@ class WinUIBackend:
         with self._lock:
             self.queue_running = False
             self.queue_current_idx = None
+            self._cancel_start_wait_timer()
             for idx, worker in list(self.workers.items()):
                 self._save_worker_progress(idx, "queue stopped")
                 self._ignored_finishes.add(idx)
@@ -503,12 +505,14 @@ class WinUIBackend:
                 return
             self.config.load()
             waiting_for_start = False
+            next_start = None
             for idx in range(start_idx, len(self.config.items)):
                 item = self.config.items[idx]
                 if item.get("finished") or item.get("claimed"):
                     continue
                 if not self._drop_has_started(item):
                     waiting_for_start = True
+                    next_start = self._earlier_datetime(next_start, self._parse_datetime(item.get("campaign_starts_at")))
                     self._log_item(item, f"Drop has not started yet; starts {self._format_datetime(item.get('campaign_starts_at'))}")
                     continue
                 self.queue_current_idx = idx
@@ -516,13 +520,16 @@ class WinUIBackend:
                 self._emit_state()
                 self._actions.put(("start_index", idx))
                 return
-            self.queue_running = False
             self.queue_current_idx = None
-            self._status = "Ready"
-            self._prune_claimed_items()
             if waiting_for_start:
-                self._log("No started drops available; queued drops were left in place", "Queue", "")
+                self.queue_running = True
+                self._status = f"Waiting for drop start: {self._format_datetime(next_start)}"
+                self._log(f"No started drops available; waiting until {self._format_datetime(next_start)}", "Queue", "")
+                self._schedule_start_wait(next_start)
             else:
+                self.queue_running = False
+                self._status = "Ready"
+                self._prune_claimed_items()
                 self._log("Queue finished", "Queue", "")
             self._emit_state()
 
@@ -538,9 +545,10 @@ class WinUIBackend:
             self._log_item(item, f"Drop has not started yet; starts {self._format_datetime(item.get('campaign_starts_at'))}")
             with self._lock:
                 self.queue_current_idx = None
-                self._status = "Waiting for drop start"
+                start_at = self._parse_datetime(item.get("campaign_starts_at"))
+                self._status = f"Waiting for drop start: {self._format_datetime(start_at)}"
+                self._schedule_start_wait(start_at)
                 self._emit_state()
-                self._actions.put(("run_from", idx + 1))
             return
 
         if not kick_is_live_by_api(item["url"]):
@@ -821,14 +829,24 @@ class WinUIBackend:
                 with self._lock:
                     if not self.queue_running or self.workers:
                         continue
+                    self.config.load()
                     items = list(enumerate(self.config.items))
                 for idx, item in items:
                     if item.get("finished") or item.get("claimed"):
+                        continue
+                    if not self._drop_has_started(item):
                         continue
                     if kick_is_live_by_api(item["url"]):
                         self._log_item(item, f"Stream back online, retrying: {self._streamer_name_from_url(item['url'])}")
                         self._actions.put(("start_index", idx))
                         break
+                else:
+                    with self._lock:
+                        next_start = self._next_pending_start()
+                        if next_start:
+                            self._status = f"Waiting for drop start: {self._format_datetime(next_start)}"
+                            self._schedule_start_wait(next_start)
+                            self._emit_state()
             except Exception as exc:
                 debug_print(f"DEBUG: Offline retry monitor error: {exc}")
 
@@ -1071,6 +1089,50 @@ class WinUIBackend:
             return True
         start_dt = self._parse_datetime(item.get("campaign_starts_at"))
         return start_dt is None or start_dt <= datetime.now(timezone.utc)
+
+    def _next_pending_start(self):
+        next_start = None
+        for item in self.config.items:
+            if item.get("finished") or item.get("claimed") or item.get("is_manual_link"):
+                continue
+            start_dt = self._parse_datetime(item.get("campaign_starts_at"))
+            if start_dt and start_dt > datetime.now(timezone.utc):
+                next_start = self._earlier_datetime(next_start, start_dt)
+        return next_start
+
+    def _earlier_datetime(self, current, candidate):
+        if candidate is None:
+            return current
+        if current is None or candidate < current:
+            return candidate
+        return current
+
+    def _schedule_start_wait(self, start_dt):
+        self._cancel_start_wait_timer()
+        if start_dt is None:
+            return
+        delay = max(1, (start_dt - datetime.now(timezone.utc)).total_seconds())
+        delay = min(delay, 24 * 60 * 60)
+
+        def wake_queue():
+            with self._lock:
+                if not self.queue_running or self.workers:
+                    return
+            self._actions.put(("run_from", 0))
+
+        timer = threading.Timer(delay, wake_queue)
+        timer.daemon = True
+        self._start_wait_timer = timer
+        timer.start()
+
+    def _cancel_start_wait_timer(self):
+        timer = self._start_wait_timer
+        self._start_wait_timer = None
+        if timer:
+            try:
+                timer.cancel()
+            except Exception:
+                pass
 
     def _parse_datetime(self, value):
         if value in (None, ""):
