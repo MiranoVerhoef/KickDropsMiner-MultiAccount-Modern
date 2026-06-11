@@ -45,6 +45,7 @@ class WinUIBackend:
         self.queue_current_idx = None
         self._ignored_finishes = set()
         self._last_progress_log = {}
+        self._last_progress_sync = {}
         self._login_drivers = {}
         self._start_wait_timer = None
         self._status = "Ready"
@@ -626,6 +627,7 @@ class WinUIBackend:
             worker.start()
 
     def _on_worker_update(self, idx, seconds, live):
+        should_sync = False
         with self._lock:
             if idx < 0 or idx >= len(self.config.items):
                 return
@@ -635,10 +637,13 @@ class WinUIBackend:
             status = "LIVE" if live else "Paused"
             self._status = f"{self._streamer_name_from_url(item.get('url', ''))}: {progress} ({status})"
             self._maybe_log_progress(idx)
+            should_sync = self._should_sync_progress(idx, item)
             self.emit({
                 "type": "progress",
                 "state": self.state(),
             })
+        if should_sync:
+            threading.Thread(target=self._sync_progress_timing, args=(idx,), daemon=True).start()
 
     def _on_worker_finish(self, idx, elapsed, completed):
         with self._lock:
@@ -929,6 +934,104 @@ class WinUIBackend:
         item = self.config.items[idx]
         self._last_progress_log[idx] = now
         self._log_item(item, f"Drop {self._drop_title_for_item(item)} is on {self._progress_text_for_seconds(item, 0)}")
+
+    def _should_sync_progress(self, idx, item):
+        if not item.get("is_global_drop") or not item.get("campaign_id"):
+            return False
+        now = time.monotonic()
+        last = self._last_progress_sync.get(idx, 0)
+        if now - last < 900:
+            return False
+        self._last_progress_sync[idx] = now
+        return True
+
+    def _sync_progress_timing(self, idx):
+        with self._lock:
+            if idx < 0 or idx >= len(self.config.items):
+                return
+            item = self.config.items[idx]
+            campaign_id = item.get("campaign_id")
+            account_id = item.get("account_id")
+            if not campaign_id:
+                return
+
+        driver = None
+        try:
+            result = fetch_drops_progress(account_id=account_id)
+            driver = result.get("driver")
+            progress_data = result.get("progress", [])
+            match = next((c for c in progress_data if isinstance(c, dict) and c.get("id") == campaign_id), None)
+            if not match:
+                return
+
+            actual_seconds = self._progress_seconds_from_api(match)
+            if actual_seconds is None:
+                return
+
+            with self._lock:
+                if idx < 0 or idx >= len(self.config.items):
+                    return
+                item = self.config.items[idx]
+                worker = self.workers.get(idx)
+                elapsed = int(getattr(worker, "elapsed_seconds", 0) or 0)
+                target_seconds = int(item.get("minutes", 0) or 0) * 60
+                if target_seconds:
+                    actual_seconds = min(actual_seconds, target_seconds)
+                displayed_seconds = int(item.get("cumulative_time", 0) or 0) + elapsed
+                drift = actual_seconds - displayed_seconds
+                if abs(drift) < 60:
+                    self._log_item(item, f"Timing check OK: Kick progress matches local timer within {self._format_duration(abs(drift))}")
+                    return
+
+                corrected_base = max(0, actual_seconds - elapsed)
+                for other in self.config.items:
+                    if other.get("campaign_id") == campaign_id:
+                        other["cumulative_time"] = corrected_base
+                        other["watched_seconds"] = corrected_base
+                        other["progress_units"] = actual_seconds // 60
+
+                if target_seconds and actual_seconds >= target_seconds:
+                    for other in self.config.items:
+                        if other.get("campaign_id") == campaign_id:
+                            other["finished"] = True
+                    if worker:
+                        worker.completed = True
+                        worker.stop_event.set()
+
+                self.config.save()
+                direction = "ahead" if drift < 0 else "behind"
+                self._log_item(
+                    item,
+                    f"Timing corrected from Kick progress: local timer was {direction} by {self._format_duration(abs(drift))}; now {self._progress_text_for_seconds(item, elapsed)}",
+                )
+                self._emit_state()
+        except Exception as exc:
+            with self._lock:
+                if 0 <= idx < len(self.config.items):
+                    self._log_item(self.config.items[idx], f"Timing check failed: {exc}")
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+
+    def _progress_seconds_from_api(self, progress):
+        values = []
+        value = progress.get("progress_units")
+        if isinstance(value, (int, float)):
+            values.append(float(value))
+        for reward in progress.get("rewards", []) if isinstance(progress.get("rewards"), list) else []:
+            if not isinstance(reward, dict):
+                continue
+            for key in ("progress_units", "current_units", "earned_units"):
+                reward_value = reward.get(key)
+                if isinstance(reward_value, (int, float)):
+                    values.append(float(reward_value))
+        if not values:
+            return None
+        # Kick drop units are minutes for these campaigns.
+        return int(max(values) * 60)
 
     def _serialize_item(self, idx, item):
         worker = self.workers.get(idx)
