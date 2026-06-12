@@ -84,15 +84,7 @@ class StreamWorker(threading.Thread):
             )
 
             if not use_headless:
-                try:
-                    if self.mini_player:
-                        self.driver.set_window_size(360, 360)
-                        self.driver.set_window_position(20, 20)
-                    else:
-                        # Always bring the main Chrome window back on-screen so it can be moved
-                        self.driver.set_window_position(60, 60)
-                except Exception:
-                    pass
+                self._position_driver()
 
             base = f"https://{domain}" if domain else "about:blank"
             if domain:
@@ -109,6 +101,22 @@ class StreamWorker(threading.Thread):
                         )
                     except Exception as e:
                         print(f"Error setting stream_quality: {e}")
+
+                if not self._driver_has_window():
+                    debug_print("DEBUG: Chrome window closed during stream quality setup; restarting driver once")
+                    try:
+                        self.driver.quit()
+                    except Exception:
+                        pass
+                    self.driver = make_chrome_driver(
+                        headless=use_headless,
+                        driver_path=self.driver_path,
+                        extension_path=self.extension_path,
+                    )
+                    if not use_headless:
+                        self._position_driver()
+                    self.driver.get(base)
+                    CookieManager.load_cookies(self.driver, domain, self.account_id)
             
             self.driver.get(self.url)
             
@@ -193,6 +201,23 @@ class StreamWorker(threading.Thread):
                     self.on_finish(self.elapsed_seconds, self.completed)
             except Exception:
                 pass
+
+    def _position_driver(self):
+        try:
+            if self.mini_player:
+                self.driver.set_window_size(360, 360)
+                self.driver.set_window_position(20, 20)
+            else:
+                # Always bring the main Chrome window back on-screen so it can be moved.
+                self.driver.set_window_position(60, 60)
+        except Exception:
+            pass
+
+    def _driver_has_window(self):
+        try:
+            return bool(self.driver and self.driver.window_handles)
+        except Exception:
+            return False
 
     def stop(self):
         """Stop the worker"""

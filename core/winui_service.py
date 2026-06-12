@@ -800,19 +800,39 @@ class WinUIBackend:
     def _sync_claimed(self, campaign_id, account_id):
         driver = None
         try:
-            claim_result = claim_available_drops(account_id=account_id)
+            claim_result = claim_available_drops(account_id=account_id, headless=True)
+            clicked_claims = int(claim_result.get("claimed", 0) or 0)
             claim_driver = claim_result.get("driver")
             if claim_driver:
                 claim_driver.quit()
-            result = fetch_drops_progress(account_id=account_id)
-            driver = result.get("driver")
-            progress_data = result.get("progress", [])
-            match = next((c for c in progress_data if isinstance(c, dict) and c.get("id") == campaign_id), None)
+            match = None
+            for attempt in range(4):
+                result = fetch_drops_progress(account_id=account_id, headless=True)
+                driver = result.get("driver")
+                progress_data = result.get("progress", [])
+                match = next((c for c in progress_data if isinstance(c, dict) and c.get("id") == campaign_id), None)
+                if match:
+                    status = str(match.get("status") or "").lower()
+                    rewards = match.get("rewards", [])
+                    all_claimed = bool(rewards) and all(bool(r.get("claimed")) for r in rewards if isinstance(r, dict))
+                    if status == "claimed" or all_claimed or clicked_claims:
+                        break
+                if driver:
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+                    driver = None
+                time.sleep(2 + attempt)
             if not match:
+                with self._lock:
+                    idx = self._find_campaign_index(campaign_id)
+                    if idx is not None:
+                        self._log_item(self.config.items[idx], "Claim check did not find this drop in Kick progress; keeping it in queue for retry")
                 return
             rewards = match.get("rewards", [])
             all_claimed = bool(rewards) and all(bool(r.get("claimed")) for r in rewards if isinstance(r, dict))
-            claimed = match.get("status") == "claimed" or all_claimed
+            claimed = str(match.get("status") or "").lower() == "claimed" or all_claimed or clicked_claims > 0
             with self._lock:
                 idx = self._find_campaign_index(campaign_id)
                 if idx is None:
@@ -821,7 +841,8 @@ class WinUIBackend:
                 if claimed:
                     item["claimed"] = True
                     item["finished"] = True
-                    self._log_item(item, f"Drop {self._drop_title_for_item(item)} claimed")
+                    detail = f"{clicked_claims} claim button(s) clicked" if clicked_claims else "Kick reports claimed"
+                    self._log_item(item, f"Drop {self._drop_title_for_item(item)} claimed ({detail})")
                     if not self.queue_running and not self.workers:
                         self.config.remove(idx)
                     else:

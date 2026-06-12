@@ -62,7 +62,7 @@ public sealed partial class MainWindow : Window
                     NavFrame.Navigate(typeof(AboutPage));
                     break;
                 case "logging":
-                    NavFrame.Navigate(typeof(LoggingPage));
+                    NavFrame.Content = new LoggingPage();
                     break;
                 case "accounts":
                     NavFrame.Navigate(typeof(AccountsPage));

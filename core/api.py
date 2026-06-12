@@ -8,7 +8,7 @@ from datetime import datetime
 from selenium.webdriver.common.by import By
 
 from utils.helpers import cookie_file_for_account, cookie_file_for_domain, debug_print, _kick_username_from_url
-from .browser import make_chrome_driver, CookieManager
+from .browser import make_chrome_driver, CookieManager, accept_kick_cookies
 
 
 def kick_is_live_by_api(url: str) -> bool:
@@ -462,7 +462,7 @@ def fetch_drops_progress(driver=None, account_id=None, headless=False):
         return {"progress": [], "driver": None}
 
 
-def claim_available_drops(driver=None, account_id=None):
+def claim_available_drops(driver=None, account_id=None, headless=True):
     """Click available claim buttons on the Kick drops inventory page."""
     use_existing_driver = driver is not None
     clicked = 0
@@ -471,43 +471,86 @@ def claim_available_drops(driver=None, account_id=None):
 
     try:
         if not use_existing_driver:
-            driver = make_chrome_driver(headless=False, visible_width=500, visible_height=500)
-            try:
-                driver.set_window_position(-2000, -2000)
-            except Exception:
-                pass
+            driver = make_chrome_driver(headless=headless, visible_width=500, visible_height=500)
+            if not headless:
+                try:
+                    driver.set_window_position(-2000, -2000)
+                except Exception:
+                    pass
             driver.get("https://kick.com")
             time.sleep(1)
             _load_cookies_to_driver(driver, account_id)
+            driver.get("https://kick.com")
+            time.sleep(1)
+            accept_kick_cookies(driver)
 
         driver.get("https://kick.com/drops/inventory")
-        time.sleep(4)
+        time.sleep(5)
+        accept_kick_cookies(driver)
 
-        for _ in range(8):
-            buttons = driver.find_elements(
-                By.XPATH,
-                "//button[contains(translate(normalize-space(.), "
-                "'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'CLAIM')]",
-            )
+        claim_xpaths = (
+            "//button[contains(translate(normalize-space(.), "
+            "'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'CLAIM')]",
+            "//*[@role='button' and contains(translate(normalize-space(.), "
+            "'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'CLAIM')]",
+            "//a[contains(translate(normalize-space(.), "
+            "'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'CLAIM')]",
+        )
+
+        for attempt in range(12):
+            if attempt:
+                try:
+                    driver.execute_script("window.scrollBy(0, Math.max(300, window.innerHeight * 0.8));")
+                except Exception:
+                    pass
+                time.sleep(0.8)
+
+            buttons = []
+            for xpath in claim_xpaths:
+                try:
+                    buttons.extend(driver.find_elements(By.XPATH, xpath))
+                except Exception:
+                    pass
+            if not buttons:
+                try:
+                    buttons = driver.execute_script(
+                        """
+                        return Array.from(document.querySelectorAll('button,[role="button"],a'))
+                          .filter(e => /claim/i.test((e.innerText || e.textContent || e.getAttribute('aria-label') || '').trim()));
+                        """
+                    ) or []
+                except Exception:
+                    buttons = []
+
             clicked_this_round = False
             for button in buttons:
                 try:
                     text = (button.text or "").strip().upper()
+                    if not text:
+                        text = str(driver.execute_script(
+                            "return arguments[0].innerText || arguments[0].textContent || arguments[0].getAttribute('aria-label') || '';",
+                            button,
+                        ) or "").strip().upper()
                     if not text or "CLAIMED" in text or "CLAIM" not in text:
                         continue
-                    if not button.is_enabled():
+                    if hasattr(button, "is_enabled") and not button.is_enabled():
                         continue
                     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
                     time.sleep(0.4)
-                    button.click()
+                    try:
+                        button.click()
+                    except Exception:
+                        driver.execute_script("arguments[0].click();", button)
                     clicked += 1
                     clicked_this_round = True
-                    time.sleep(2)
+                    time.sleep(2.5)
                     break
                 except Exception:
                     continue
             if not clicked_this_round:
-                break
+                if attempt >= 2:
+                    break
+                time.sleep(1)
 
         return {"claimed": clicked, "driver": driver if not use_existing_driver else None}
     except Exception as e:

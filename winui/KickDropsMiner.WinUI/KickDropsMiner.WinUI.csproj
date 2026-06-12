@@ -16,9 +16,9 @@
     <EnableWinAppRunSupport>false</EnableWinAppRunSupport>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>2.0.2</Version>
-    <AssemblyVersion>2.0.2.0</AssemblyVersion>
-    <FileVersion>2.0.2.0</FileVersion>
+    <Version>2.0.3</Version>
+    <AssemblyVersion>2.0.3.0</AssemblyVersion>
+    <FileVersion>2.0.3.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -78,10 +78,15 @@
   <Target Name="CopyXamlResourcesToPublishDir" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
     <ItemGroup>
       <GeneratedXamlResource Include="$(OutDir)**\*.xbf" />
+      <GeneratedPriResource Include="$(OutDir)**\*.pri" />
     </ItemGroup>
     <Copy
       SourceFiles="@(GeneratedXamlResource)"
       DestinationFiles="@(GeneratedXamlResource->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true" />
+    <Copy
+      SourceFiles="@(GeneratedPriResource)"
+      DestinationFiles="@(GeneratedPriResource->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
       SkipUnchangedFiles="true" />
   </Target>
 </Project>

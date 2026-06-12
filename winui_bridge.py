@@ -7,6 +7,8 @@ import site
 import sys
 import threading
 
+sys.dont_write_bytecode = True
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 PYTHON_LIBS_DIR = os.path.join(APP_DIR, "python_libs")
 if os.path.isdir(PYTHON_LIBS_DIR):

@@ -94,6 +94,7 @@ public sealed class PythonBridgeClient
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        startInfo.Environment["PYTHONDONTWRITEBYTECODE"] = "1";
 
         var process = Process.Start(startInfo);
         if (process is null)
