@@ -24,7 +24,7 @@ public sealed partial class SettingsPage : Page
         MuteSwitch.IsOn = State.Mute;
         HidePlayerSwitch.IsOn = State.HidePlayer;
         MiniPlayerSwitch.IsOn = State.MiniPlayer;
-        Force160pSwitch.IsOn = State.Force160p;
+        SetStreamQualitySelection(State.StreamQuality);
         AutoStartSwitch.IsOn = State.AutoStart;
         SetThemeSelection(State.ThemeMode);
         SetLanguageSelection(State.Language);
@@ -55,6 +55,16 @@ public sealed partial class SettingsPage : Page
     }
 
     private async void Language_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync();
+    }
+
+    private async void StreamQuality_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_loading)
         {
@@ -113,6 +123,24 @@ public sealed partial class SettingsPage : Page
         return (LanguageBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "en";
     }
 
+    private void SetStreamQualitySelection(string quality)
+    {
+        foreach (var item in StreamQualityBox.Items.OfType<ComboBoxItem>())
+        {
+            if ((item.Tag as string) == quality)
+            {
+                StreamQualityBox.SelectedItem = item;
+                return;
+            }
+        }
+        StreamQualityBox.SelectedIndex = 0;
+    }
+
+    private string SelectedStreamQuality()
+    {
+        return (StreamQualityBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "160";
+    }
+
     private async void Chromedriver_Click(object sender, RoutedEventArgs e)
     {
         var path = await PickFileAsync([".exe"], "Pick chromedriver.exe");
@@ -135,6 +163,27 @@ public sealed partial class SettingsPage : Page
         await SaveSettingsAsync(extensionPath: path);
     }
 
+    private async void ManualCheckDrops_Click(object sender, RoutedEventArgs e)
+    {
+        ManualCheckStatus.Text = "Checking Kick progress...";
+        var result = await AppServices.Bridge.SendCommandAsync("sync_progress");
+        if (result.HasValue)
+        {
+            var updated = 0;
+            if (result.Value.TryGetProperty("updated", out var updatedElement)
+                && updatedElement.ValueKind == System.Text.Json.JsonValueKind.Number)
+            {
+                updated = updatedElement.GetInt32();
+            }
+            State.ApplyBackendState(result.Value);
+            ManualCheckStatus.Text = $"Updated {updated} drop(s).";
+        }
+        else
+        {
+            ManualCheckStatus.Text = "Check failed. See Logging.";
+        }
+    }
+
     private async Task SaveSettingsAsync(string? chromedriverPath = null, string? extensionPath = null)
     {
         var result = await AppServices.Bridge.SendCommandAsync("update_settings", new
@@ -142,7 +191,8 @@ public sealed partial class SettingsPage : Page
             mute = MuteSwitch.IsOn,
             hide_player = HidePlayerSwitch.IsOn,
             mini_player = MiniPlayerSwitch.IsOn,
-            force_160p = Force160pSwitch.IsOn,
+            force_160p = SelectedStreamQuality() == "160",
+            stream_quality = SelectedStreamQuality(),
             auto_start = AutoStartSwitch.IsOn,
             dark_mode = SelectedThemeMode() == "dark",
             theme_mode = SelectedThemeMode(),

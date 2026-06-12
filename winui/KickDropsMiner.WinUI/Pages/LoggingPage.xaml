@@ -34,13 +34,15 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock FontSize="32" FontWeight="SemiBold" Text="Logging" />
                 <TextBlock x:Name="ExportStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Queue, creator switching, and progress history." />
             </StackPanel>
-            <Button Grid.Column="1" MinWidth="110" Click="Export_Click" Content="Export logs" />
-            <Button Grid.Column="2" MinWidth="100" Click="Clear_Click" Content="Clear" />
+            <Button Grid.Column="1" MinWidth="100" Click="Refresh_Click" Content="Refresh" />
+            <Button Grid.Column="2" MinWidth="110" Click="Export_Click" Content="Export logs" />
+            <Button Grid.Column="3" MinWidth="100" Click="Clear_Click" Content="Clear" />
         </Grid>
 
         <Grid Grid.Row="1" ColumnSpacing="12">

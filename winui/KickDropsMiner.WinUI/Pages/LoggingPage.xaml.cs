@@ -16,10 +16,12 @@ public sealed partial class LoggingPage : Page
 
     private void RefreshFilters()
     {
+        var selectedDrop = DropFilter.SelectedItem as string ?? "All drops";
+        var selectedCreator = CreatorFilter.SelectedItem as string ?? "All creators";
         DropFilter.ItemsSource = AppServices.State.DropFilterValues();
         CreatorFilter.ItemsSource = AppServices.State.CreatorFilterValues();
-        DropFilter.SelectedIndex = 0;
-        CreatorFilter.SelectedIndex = 0;
+        DropFilter.SelectedItem = DropFilter.Items.Contains(selectedDrop) ? selectedDrop : "All drops";
+        CreatorFilter.SelectedItem = CreatorFilter.Items.Contains(selectedCreator) ? selectedCreator : "All creators";
     }
 
     private void RefreshLogs()
@@ -33,6 +35,13 @@ public sealed partial class LoggingPage : Page
         {
             RefreshLogs();
         }
+    }
+
+    private async void Refresh_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        await AppServices.State.RefreshFromBridgeAsync();
+        RefreshFilters();
+        RefreshLogs();
     }
 
     private void Clear_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

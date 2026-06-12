@@ -26,6 +26,7 @@ class StreamWorker(threading.Thread):
         mute=True,
         mini_player=False,
         force_160p=False,
+        stream_quality="160",
         offline_fresh_checks_to_switch=2,
         required_category_id=None,
         cumulative_time_callback=None,
@@ -45,6 +46,7 @@ class StreamWorker(threading.Thread):
         self.mute = mute
         self.mini_player = mini_player
         self.force_160p = force_160p
+        self.stream_quality = str(stream_quality or ("160" if force_160p else "160"))
         self.completed = False
         self.ended_because_offline = False
         self.ended_because_wrong_category = False
@@ -97,10 +99,14 @@ class StreamWorker(threading.Thread):
                 self.driver.get(base)
                 CookieManager.load_cookies(self.driver, domain, self.account_id)
                 
-                # Set stream quality in session storage BEFORE navigating to stream URL
-                if self.force_160p:
+                # Set stream quality in session storage BEFORE navigating to stream URL.
+                if self.stream_quality in {"160", "320", "480", "720", "1080"}:
                     try:
-                        self.driver.execute_script("sessionStorage.setItem('stream_quality', '160');")
+                        self.driver.execute_script(
+                            "sessionStorage.setItem('stream_quality', arguments[0]);"
+                            "localStorage.setItem('stream_quality', arguments[0]);",
+                            self.stream_quality,
+                        )
                     except Exception as e:
                         print(f"Error setting stream_quality: {e}")
             

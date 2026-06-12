@@ -54,6 +54,7 @@ class WinUIBackend:
         self._running = True
         threading.Thread(target=self._action_loop, daemon=True).start()
         threading.Thread(target=self._offline_retry_loop, daemon=True).start()
+        threading.Thread(target=self._startup_progress_sync, daemon=True).start()
 
     def handle(self, command, payload=None):
         payload = payload or {}
@@ -75,6 +76,7 @@ class WinUIBackend:
             "finish_login": self.finish_login,
             "cancel_login": self.cancel_login,
             "update_settings": self.update_settings,
+            "sync_progress": self.sync_progress,
             "shutdown": self.shutdown,
         }
         handler = handlers.get(command)
@@ -110,6 +112,7 @@ class WinUIBackend:
                     "hide_player": self.config.hide_player,
                     "mini_player": self.config.mini_player,
                     "force_160p": self.config.force_160p,
+                    "stream_quality": self.config.stream_quality,
                     "auto_start": self.config.auto_start,
                     "dark_mode": self.config.dark_mode,
                     "theme_mode": self.config.theme_mode,
@@ -462,6 +465,10 @@ class WinUIBackend:
             for key in ("language", "chromedriver_path", "extension_path"):
                 if key in payload:
                     setattr(self.config, key, payload[key])
+            if "stream_quality" in payload:
+                quality = str(payload.get("stream_quality") or "160")
+                self.config.stream_quality = quality if quality in {"160", "320", "480", "720", "1080"} else "160"
+                self.config.force_160p = self.config.stream_quality == "160"
             if "theme_mode" in payload:
                 theme_mode = payload.get("theme_mode")
                 self.config.theme_mode = theme_mode if theme_mode in {"auto", "light", "dark"} else "dark"
@@ -472,7 +479,12 @@ class WinUIBackend:
                 worker.hide_player = self.config.hide_player
                 worker.mini_player = self.config.mini_player
                 worker.force_160p = self.config.force_160p
+                worker.stream_quality = self.config.stream_quality
             return {"ok": True, **self.state()}
+
+    def sync_progress(self, _payload=None):
+        updated = self._sync_all_drop_progress(manual=True)
+        return {"ok": True, "updated": updated, **self.state()}
 
     def shutdown(self, _payload=None):
         self.stop_queue()
@@ -615,6 +627,7 @@ class WinUIBackend:
                 mute=bool(self.config.mute),
                 mini_player=bool(self.config.mini_player),
                 force_160p=bool(self.config.force_160p),
+                stream_quality=self.config.stream_quality,
                 required_category_id=item.get("required_category_id"),
                 cumulative_time_callback=cumulative_cb,
                 account_id=item.get("account_id") or self.config.default_account_id,
@@ -854,6 +867,81 @@ class WinUIBackend:
                             self._emit_state()
             except Exception as exc:
                 debug_print(f"DEBUG: Offline retry monitor error: {exc}")
+
+    def _startup_progress_sync(self):
+        time.sleep(1.5)
+        try:
+            self._sync_all_drop_progress(manual=False)
+        except Exception as exc:
+            debug_print(f"DEBUG: Startup progress sync failed: {exc}")
+
+    def _sync_all_drop_progress(self, manual=False):
+        with self._lock:
+            items = [
+                item
+                for item in self.config.items
+                if item.get("is_global_drop") and item.get("campaign_id") and not item.get("claimed")
+            ]
+            account_ids = sorted({item.get("account_id") or self.config.default_account_id for item in items})
+
+        if not items:
+            if manual:
+                self._log("Manual drop check found no campaign drops to sync", "Drops", "")
+            return 0
+
+        total_updated = 0
+        if manual:
+            self._log("Manual drop progress check started", "Drops", "")
+        else:
+            self._log("Startup drop progress sync started", "Drops", "")
+
+        for account_id in account_ids:
+            driver = None
+            try:
+                result = fetch_drops_progress(account_id=account_id)
+                driver = result.get("driver")
+                progress_data = [p for p in result.get("progress", []) if isinstance(p, dict)]
+                progress_by_id = {p.get("id"): p for p in progress_data if p.get("id")}
+                with self._lock:
+                    for item in self.config.items:
+                        if not item.get("is_global_drop") or item.get("claimed"):
+                            continue
+                        item_account_id = item.get("account_id") or self.config.default_account_id
+                        if item_account_id != account_id:
+                            continue
+                        match = progress_by_id.get(item.get("campaign_id"))
+                        if not match:
+                            continue
+                        target_seconds = int(item.get("minutes", 0) or 0) * 60
+                        actual_seconds = self._progress_seconds_from_api(match, target_seconds)
+                        if actual_seconds is None:
+                            continue
+                        if target_seconds:
+                            actual_seconds = min(actual_seconds, target_seconds)
+                        old_seconds = int(item.get("cumulative_time", 0) or 0)
+                        if abs(actual_seconds - old_seconds) >= 1:
+                            item["cumulative_time"] = actual_seconds
+                            item["watched_seconds"] = actual_seconds
+                            item["progress_units"] = actual_seconds // 60
+                            total_updated += 1
+                        if target_seconds and actual_seconds >= target_seconds:
+                            item["finished"] = True
+                        if str(match.get("status") or "").lower() in {"claimed", "completed", "complete"}:
+                            item["finished"] = True
+                    self.config.save()
+                    self._emit_state()
+            except Exception as exc:
+                self._log(f"Drop progress sync failed: {exc}", "Drops", "")
+            finally:
+                if driver:
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+
+        message = f"Drop progress sync complete: {total_updated} drop(s) updated"
+        self._log(message, "Drops", "")
+        return total_updated
 
     def _emit_state(self):
         self.emit({"type": "state", "state": self.state()})

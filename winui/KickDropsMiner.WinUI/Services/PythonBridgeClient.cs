@@ -218,6 +218,7 @@ public sealed class PythonBridgeClient
             "start_queue" => TimeSpan.FromSeconds(3),
             "start_login" => TimeSpan.FromSeconds(60),
             "fetch_drops" => TimeSpan.FromMinutes(2),
+            "sync_progress" => TimeSpan.FromMinutes(2),
             _ => TimeSpan.FromSeconds(30),
         };
     }

@@ -18,6 +18,7 @@ public sealed class AppState : INotifyPropertyChanged
     private bool _hidePlayer;
     private bool _miniPlayer;
     private bool _force160p;
+    private string _streamQuality = "160";
     private bool _autoStart;
     private bool _darkMode = true;
     private string _themeMode = "dark";
@@ -42,6 +43,7 @@ public sealed class AppState : INotifyPropertyChanged
     public bool HidePlayer { get => _hidePlayer; private set => SetField(ref _hidePlayer, value); }
     public bool MiniPlayer { get => _miniPlayer; private set => SetField(ref _miniPlayer, value); }
     public bool Force160p { get => _force160p; private set => SetField(ref _force160p, value); }
+    public string StreamQuality { get => _streamQuality; private set => SetField(ref _streamQuality, value); }
     public bool AutoStart { get => _autoStart; private set => SetField(ref _autoStart, value); }
     public bool DarkMode { get => _darkMode; private set => SetField(ref _darkMode, value); }
     public string ThemeMode { get => _themeMode; private set => SetField(ref _themeMode, value); }
@@ -113,6 +115,8 @@ public sealed class AppState : INotifyPropertyChanged
             HidePlayer = ReadBool(settings, "hide_player");
             MiniPlayer = ReadBool(settings, "mini_player");
             Force160p = ReadBool(settings, "force_160p");
+            var streamQuality = ReadString(settings, "stream_quality");
+            StreamQuality = string.IsNullOrWhiteSpace(streamQuality) ? "160" : streamQuality;
             AutoStart = ReadBool(settings, "auto_start");
             DarkMode = ReadBool(settings, "dark_mode");
             var themeMode = ReadString(settings, "theme_mode");
@@ -178,6 +182,8 @@ public sealed class AppState : INotifyPropertyChanged
             HidePlayer = ReadBool(root, "hide_player");
             MiniPlayer = ReadBool(root, "mini_player");
             Force160p = ReadBool(root, "force_160p");
+            var streamQuality = ReadString(root, "stream_quality");
+            StreamQuality = string.IsNullOrWhiteSpace(streamQuality) ? (Force160p ? "160" : "160") : streamQuality;
             AutoStart = ReadBool(root, "auto_start");
             DarkMode = ReadBool(root, "dark_mode");
             var themeMode = ReadString(root, "theme_mode");

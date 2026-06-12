@@ -15,6 +15,7 @@ class Config:
         self.hide_player = False
         self.mini_player = False
         self.force_160p = False
+        self.stream_quality = "160"
         self.dark_mode = True  # Dark by default
         self.theme_mode = "dark"  # auto | light | dark
         self.language = "fr"  # default language code
@@ -70,6 +71,9 @@ class Config:
             self.hide_player = data.get("hide_player", False)
             self.mini_player = data.get("mini_player", False)
             self.force_160p = data.get("force_160p", False)
+            self.stream_quality = str(data.get("stream_quality") or ("160" if self.force_160p else "160"))
+            if self.stream_quality not in {"160", "320", "480", "720", "1080"}:
+                self.stream_quality = "160"
             self.dark_mode = data.get("dark_mode", True)
             self.theme_mode = data.get("theme_mode") or ("dark" if self.dark_mode else "light")
             if self.theme_mode not in {"auto", "light", "dark"}:
@@ -113,6 +117,7 @@ class Config:
             "hide_player": self.hide_player,
             "mini_player": self.mini_player,
             "force_160p": self.force_160p,
+            "stream_quality": self.stream_quality,
             "dark_mode": self.dark_mode,
             "theme_mode": self.theme_mode,
             "language": self.language,

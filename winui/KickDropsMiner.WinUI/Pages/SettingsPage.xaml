@@ -33,7 +33,13 @@
                     <ToggleSwitch x:Name="MuteSwitch" Header="Mute" Toggled="Setting_Toggled" />
                     <ToggleSwitch x:Name="HidePlayerSwitch" Header="Hide player" Toggled="Setting_Toggled" />
                     <ToggleSwitch x:Name="MiniPlayerSwitch" Header="Mini player" Toggled="Setting_Toggled" />
-                    <ToggleSwitch x:Name="Force160pSwitch" Header="Force 160p" Toggled="Setting_Toggled" />
+                    <ComboBox x:Name="StreamQualityBox" Header="Stream resolution" MinWidth="160" SelectionChanged="StreamQuality_SelectionChanged">
+                        <ComboBoxItem Content="160p" Tag="160" />
+                        <ComboBoxItem Content="320p" Tag="320" />
+                        <ComboBoxItem Content="480p" Tag="480" />
+                        <ComboBoxItem Content="720p" Tag="720" />
+                        <ComboBoxItem Content="1080p" Tag="1080" />
+                    </ComboBox>
                 </StackPanel>
             </Border>
 
@@ -41,6 +47,8 @@
                 <StackPanel Spacing="8">
                     <TextBlock FontSize="18" FontWeight="SemiBold" Text="Queue" />
                     <ToggleSwitch x:Name="AutoStartSwitch" Header="Auto-start queue" Toggled="Setting_Toggled" />
+                    <Button MinWidth="170" Click="ManualCheckDrops_Click" Content="Manual check drops" />
+                    <TextBlock x:Name="ManualCheckStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="WrapWholeWords" />
                 </StackPanel>
             </Border>
 

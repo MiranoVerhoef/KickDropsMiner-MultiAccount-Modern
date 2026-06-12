@@ -14,6 +14,8 @@ This fork modernizes Kick Drop Miner around drop-based automation instead of man
 - **Multi-account support** - add/remove Kick accounts, save cookies per account, detect account names from Kick sessions, and choose the account when adding drops or links.
 - **Better logging** - runtime history records queue starts/stops, creator switches, saved progress, resumed progress, and drop completion, with filters for drop and creator.
 - **Browser cleanup and Kick handling** - stopping the queue force-closes Chrome sessions, and Kick cookie prompts are accepted automatically when possible.
+- **v2.0.0 sync and quality controls** - choose stream resolution from 160p through 1080p, sync Kick drop progress on startup, run a manual drop check from Settings, and refresh Logging without leaving the page.
+- **Tiny official field note** - happy Rust drops hunting; may your timers behave and your rewards land before your coffee gets suspiciously cold.
 
 Kick Drop Miner automates watching Kick.com streams so you can keep drop timers moving without babysitting the site. The desktop app ships with a CustomTkinter UI, Selenium + undetected-chromedriver under the hood, persistent local storage, and smart handling for live/offline transitions.
 
